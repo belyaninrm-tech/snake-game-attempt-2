@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snake Game – Two Levels</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 16px;
+      user-select: none;
+    }
+
+    h1 { font-size: 1.8rem; letter-spacing: 2px; color: #58a6ff; }
+
+    #hud {
+      display: flex;
+      gap: 32px;
+      font-size: 1rem;
+      color: #8b949e;
+    }
+
+    #hud span { color: #e6edf3; font-weight: bold; }
+
+    #canvas-wrapper {
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      border: 2px solid #30363d;
+      border-radius: 6px;
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(13, 17, 23, 0.88);
+      border-radius: 4px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+
+    #overlay h2 { font-size: 2rem; color: #58a6ff; }
+    #overlay p  { color: #8b949e; font-size: 0.95rem; text-align: center; line-height: 1.6; }
+
+    button {
+      margin-top: 6px;
+      padding: 10px 28px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 6px;
+      background: #238636;
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #2ea043; }
+
+    #controls {
+      color: #8b949e;
+      font-size: 0.82rem;
+      text-align: center;
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+  <h1>SNAKE</h1>
+
+  <div id="hud">
+    LEVEL <span id="levelDisplay">1</span>
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    SCORE <span id="scoreDisplay">0</span>
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    HIGH <span id="highDisplay">0</span>
+  </div>
+
+  <div id="canvas-wrapper">
+    <canvas id="canvas"></canvas>
+    <div id="overlay">
+      <h2>SNAKE</h2>
+      <p>Two levels of increasing challenge.<br>
+         Eat food to grow and advance.<br>
+         Level 2 adds maze walls!</p>
+      <button id="startBtn">Start Game</button>
+    </div>
+  </div>
+
+  <div id="controls">
+    Arrow Keys / WASD — move &nbsp;|&nbsp; P — pause
+  </div>
+
+<script>
+(() => {
+  const COLS = 25;
+  const ROWS = 25;
+  const CELL = 24;
+  const W = COLS * CELL;
+  const H = ROWS * CELL;
+
+  const canvas  = document.getElementById('canvas');
+  const ctx     = canvas.getContext('2d');
+  canvas.width  = W;
+  canvas.height = H;
+
+  const overlay      = document.getElementById('overlay');
+  const startBtn     = document.getElementById('startBtn');
+  const levelDisplay = document.getElementById('levelDisplay');
+  const scoreDisplay = document.getElementById('scoreDisplay');
+  const highDisplay  = document.getElementById('highDisplay');
+
+  // ── Palette ──────────────────────────────────────────────────────────────
+  const COLORS = {
+    bg:        '#0d1117',
+    grid:      '#161b22',
+    wall:      '#30363d',
+    wallStroke:'#58a6ff',
+    snakeHead: '#58a6ff',
+    snakeBody: '#1f6feb',
+    food:      '#3fb950',
+    foodGlow:  '#2ea043',
+    bonus:     '#f78166',
+    bonusGlow: '#d73a3a',
+    portal:    '#a371f7',
+    text:      '#e6edf3',
+  };
+
+  // ── Level definitions ─────────────────────────────────────────────────────
+  // Walls: array of {x, y} grid cells
+  const LEVELS = [
+    {
+      speed:       130,    // ms per tick
+      foodToAdvance: 5,    // food needed to clear level
+      walls:       [],
+      bonusChance: 0.20,   // probability a bonus apple spawns
+      label:       'Level 1 – Open Field',
+    },
+    {
+      speed:       95,
+      foodToAdvance: 8,
+      walls:       buildMaze(),
+      bonusChance: 0.30,
+      label:       'Level 2 – The Maze',
+    },
+  ];
+
+  function buildMaze() {
+    const w = [];
+    // Top & bottom interior bars
+    for (let x = 3; x <= 10; x++) { w.push({x, y: 5}); w.push({x, y: 19}); }
+    for (let x = 14; x <= 21; x++) { w.push({x, y: 5}); w.push({x, y: 19}); }
+    // Left & right interior bars
+    for (let y = 8; y <= 11; y++) { w.push({x: 5, y}); w.push({x: 19, y}); }
+    for (let y = 13; y <= 16; y++) { w.push({x: 5, y}); w.push({x: 19, y}); }
+    // Centre cross
+    for (let x = 10; x <= 14; x++) w.push({x, y: 12});
+    for (let y = 9; y <= 15; y++)  w.push({x: 12, y});
+    return w;
+  }
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let snake, dir, nextDir, food, bonus, score, highScore = 0;
+  let levelIdx, levelData, wallSet;
+  let foodEaten, gameLoop, paused, phase;
+  // phase: 'menu' | 'playing' | 'paused' | 'levelTransition' | 'gameOver' | 'win'
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function key(x, y) { return `${x},${y}`; }
+
+  function buildWallSet(walls) {
+    const s = new Set();
+    walls.forEach(w => s.add(key(w.x, w.y)));
+    return s;
+  }
+
+  function randomCell(exclude) {
+    let x, y;
+    do {
+      x = Math.floor(Math.random() * COLS);
+      y = Math.floor(Math.random() * ROWS);
+    } while (exclude.has(key(x, y)));
+    return {x, y};
+  }
+
+  function occupiedSet() {
+    const s = new Set(wallSet);
+    snake.forEach(seg => s.add(key(seg.x, seg.y)));
+    return s;
+  }
+
+  function spawnFood() {
+    food = randomCell(occupiedSet());
+    if (Math.random() < levelData.bonusChance) {
+      const occ = occupiedSet();
+      occ.add(key(food.x, food.y));
+      bonus = randomCell(occ);
+    } else {
+      bonus = null;
+    }
+  }
+
+  function initLevel(idx) {
+    levelIdx  = idx;
+    levelData = LEVELS[idx];
+    wallSet   = buildWallSet(levelData.walls);
+    foodEaten = 0;
+
+    // Start snake near centre
+    const cx = Math.floor(COLS / 2);
+    const cy = Math.floor(ROWS / 2);
+    snake = [{x: cx, y: cy}, {x: cx - 1, y: cy}, {x: cx - 2, y: cy}];
+    dir     = {x: 1, y: 0};
+    nextDir = {x: 1, y: 0};
+
+    spawnFood();
+    levelDisplay.textContent = idx + 1;
+  }
+
+  function startGame() {
+    score = 0;
+    scoreDisplay.textContent = 0;
+    hideOverlay();
+    initLevel(0);
+    phase = 'playing';
+    scheduleLoop();
+  }
+
+  function scheduleLoop() {
+    clearTimeout(gameLoop);
+    gameLoop = setTimeout(tick, levelData.speed);
+  }
+
+  // ── Tick ──────────────────────────────────────────────────────────────────
+  function tick() {
+    if (phase !== 'playing') return;
+
+    dir = nextDir;
+    const head = snake[0];
+    let nx = head.x + dir.x;
+    let ny = head.y + dir.y;
+
+    // Wrap around edges
+    nx = (nx + COLS) % COLS;
+    ny = (ny + ROWS) % ROWS;
+
+    const newHead = {x: nx, y: ny};
+
+    // Wall collision
+    if (wallSet.has(key(nx, ny))) { endGame(); return; }
+
+    // Self collision (skip tail – it will move)
+    for (let i = 0; i < snake.length - 1; i++) {
+      if (snake[i].x === nx && snake[i].y === ny) { endGame(); return; }
+    }
+
+    let grew = false;
+
+    if (food && nx === food.x && ny === food.y) {
+      grew = true;
+      score += 10;
+      foodEaten++;
+      scoreDisplay.textContent = score;
+      if (score > highScore) { highScore = score; highDisplay.textContent = highScore; }
+
+      if (foodEaten >= levelData.foodToAdvance) {
+        snake.unshift(newHead);
+        draw();
+        phase = 'levelTransition';
+        clearTimeout(gameLoop);
+        const nextIdx = levelIdx + 1;
+        if (nextIdx >= LEVELS.length) {
+          showOverlay('YOU WIN!', `Final score: ${score}`, 'Play Again');
+          phase = 'win';
+        } else {
+          showOverlay(LEVELS[nextIdx].label, `Score: ${score} — Press Continue`, 'Continue');
+          phase = 'levelTransition';
+          startBtn.onclick = () => { initLevel(nextIdx); hideOverlay(); phase = 'playing'; scheduleLoop(); };
+        }
+        return;
+      }
+      spawnFood();
+    } else if (bonus && nx === bonus.x && ny === bonus.y) {
+      grew = true;
+      score += 25;
+      scoreDisplay.textContent = score;
+      if (score > highScore) { highScore = score; highDisplay.textContent = highScore; }
+      bonus = null;
+    }
+
+    snake.unshift(newHead);
+    if (!grew) snake.pop();
+
+    draw();
+    scheduleLoop();
+  }
+
+  // ── Drawing ───────────────────────────────────────────────────────────────
+  function draw() {
+    // Background
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid lines
+    ctx.strokeStyle = COLORS.grid;
+    ctx.lineWidth = 0.5;
+    for (let c = 0; c <= COLS; c++) {
+      ctx.beginPath(); ctx.moveTo(c * CELL, 0); ctx.lineTo(c * CELL, H); ctx.stroke();
+    }
+    for (let r = 0; r <= ROWS; r++) {
+      ctx.beginPath(); ctx.moveTo(0, r * CELL); ctx.lineTo(W, r * CELL); ctx.stroke();
+    }
+
+    // Walls
+    levelData.walls.forEach(w => {
+      ctx.fillStyle = COLORS.wall;
+      ctx.fillRect(w.x * CELL + 1, w.y * CELL + 1, CELL - 2, CELL - 2);
+      ctx.strokeStyle = COLORS.wallStroke;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(w.x * CELL + 1, w.y * CELL + 1, CELL - 2, CELL - 2);
+    });
+
+    // Bonus food
+    if (bonus) drawCircle(bonus.x, bonus.y, COLORS.bonus, COLORS.bonusGlow);
+
+    // Food
+    if (food) drawCircle(food.x, food.y, COLORS.food, COLORS.foodGlow);
+
+    // Snake body (draw tail → head so head is on top)
+    for (let i = snake.length - 1; i >= 0; i--) {
+      const seg = snake[i];
+      if (i === 0) {
+        // Head
+        ctx.fillStyle = COLORS.snakeHead;
+        roundRect(seg.x * CELL + 2, seg.y * CELL + 2, CELL - 4, CELL - 4, 5);
+        // Eyes
+        drawEyes(seg, dir);
+      } else {
+        const alpha = Math.max(0.4, 1 - i / snake.length * 0.6);
+        ctx.fillStyle = COLORS.snakeBody;
+        ctx.globalAlpha = alpha;
+        roundRect(seg.x * CELL + 3, seg.y * CELL + 3, CELL - 6, CELL - 6, 4);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Progress bar
+    drawProgressBar();
+  }
+
+  function drawCircle(cx, cy, fill, glow) {
+    const px = cx * CELL + CELL / 2;
+    const py = cy * CELL + CELL / 2;
+    const r  = CELL / 2 - 3;
+    const grad = ctx.createRadialGradient(px - r * 0.3, py - r * 0.3, 1, px, py, r);
+    grad.addColorStop(0, '#fff');
+    grad.addColorStop(0.3, fill);
+    grad.addColorStop(1, glow);
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
+
+  function drawEyes(seg, d) {
+    const cx = seg.x * CELL + CELL / 2;
+    const cy = seg.y * CELL + CELL / 2;
+    const offsets = d.x !== 0
+      ? [{dx: d.x * 3, dy: -4}, {dx: d.x * 3, dy: 4}]
+      : [{dx: -4, dy: d.y * 3}, {dx: 4, dy: d.y * 3}];
+    offsets.forEach(o => {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(cx + o.dx, cy + o.dy, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#0d1117';
+      ctx.beginPath();
+      ctx.arc(cx + o.dx + d.x, cy + o.dy + d.y, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  function drawProgressBar() {
+    const barW = W - 20;
+    const barH = 6;
+    const x = 10, y = H - 12;
+    const pct = Math.min(foodEaten / levelData.foodToAdvance, 1);
+    ctx.fillStyle = '#21262d';
+    ctx.beginPath(); roundRectPath(x, y, barW, barH, 3); ctx.fill();
+    if (pct > 0) {
+      ctx.fillStyle = levelIdx === 0 ? '#3fb950' : '#a371f7';
+      ctx.beginPath(); roundRectPath(x, y, barW * pct, barH, 3); ctx.fill();
+    }
+  }
+
+  function roundRect(x, y, w, h, r) {
+    roundRectPath(x, y, w, h, r);
+    ctx.fill();
+  }
+
+  function roundRectPath(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  // ── Overlay helpers ───────────────────────────────────────────────────────
+  function showOverlay(title, subtitle, btnLabel) {
+    overlay.querySelector('h2').textContent = title;
+    overlay.querySelector('p').textContent  = subtitle;
+    startBtn.textContent = btnLabel;
+    overlay.style.display = 'flex';
+  }
+
+  function hideOverlay() {
+    overlay.style.display = 'none';
+  }
+
+  function endGame() {
+    clearTimeout(gameLoop);
+    phase = 'gameOver';
+    draw();
+    showOverlay('GAME OVER', `Score: ${score}`, 'Try Again');
+    startBtn.onclick = startGame;
+  }
+
+  // ── Input ─────────────────────────────────────────────────────────────────
+  const DIR_MAP = {
+    ArrowUp:    {x:  0, y: -1}, w: {x:  0, y: -1},
+    ArrowDown:  {x:  0, y:  1}, s: {x:  0, y:  1},
+    ArrowLeft:  {x: -1, y:  0}, a: {x: -1, y:  0},
+    ArrowRight: {x:  1, y:  0}, d: {x:  1, y:  0},
+  };
+
+  document.addEventListener('keydown', e => {
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+
+    if (key === 'p' || key === 'P') {
+      if (phase === 'playing') {
+        phase = 'paused';
+        clearTimeout(gameLoop);
+        showOverlay('PAUSED', 'Press P to resume', 'Resume');
+        startBtn.onclick = () => { hideOverlay(); phase = 'playing'; scheduleLoop(); };
+      } else if (phase === 'paused') {
+        hideOverlay();
+        phase = 'playing';
+        scheduleLoop();
+      }
+      return;
+    }
+
+    if (phase !== 'playing') return;
+
+    const d = DIR_MAP[e.key] || DIR_MAP[e.key.toLowerCase()];
+    if (!d) return;
+    // Prevent 180° reversal
+    if (d.x === -dir.x && d.y === -dir.y) return;
+    nextDir = d;
+    e.preventDefault();
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  startBtn.onclick = startGame;
+  phase = 'menu';
+
+  // Draw empty board so canvas isn't blank behind the overlay
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, W, H);
+})();
+</script>
+</body>
+</html>
