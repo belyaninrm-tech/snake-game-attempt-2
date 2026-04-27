@@ -203,17 +203,18 @@ const overlay = document.getElementById('overlay');
 const hudEl   = document.getElementById('hud');
 
 // ── Fruits ────────────────────────────────────────────────────────────────────
+// bg: glow/halo colour.  draw: custom canvas painter (no emoji needed).
 const FRUITS = [
-  { name: 'Banana',        emoji: '🍌', pts: 10 },
-  { name: 'Kiwi',          emoji: '🥝', pts: 12 },
-  { name: 'Orange',        emoji: '🍊', pts: 10 },
-  { name: 'Apple',         emoji: '🍎', pts: 10 },
-  { name: 'Peach',         emoji: '🍑', pts: 15 },
-  { name: 'Pear',          emoji: '🍐', pts: 12 },
-  { name: 'Passion Fruit', emoji: '🫐', pts: 20 },
-  { name: 'Strawberry',    emoji: '🍓', pts: 15 },
-  { name: 'Dragon Fruit',  emoji: '🌺', pts: 25 },
-  { name: 'Mango',         emoji: '🥭', pts: 18 },
+  { name: 'Banana',        emoji: '🍌', bg: '#ffe135', pts: 10 },
+  { name: 'Kiwi',          emoji: '🥝', bg: '#6abf4b', pts: 12 },
+  { name: 'Orange',        emoji: '🍊', bg: '#ff8c00', pts: 10 },
+  { name: 'Apple',         emoji: '🍎', bg: '#ff3b30', pts: 10 },
+  { name: 'Peach',         emoji: '🍑', bg: '#ffad6a', pts: 15 },
+  { name: 'Pear',          emoji: '🍐', bg: '#aadc38', pts: 12 },
+  { name: 'Passion Fruit', draw: 'passion', icon: '🟣', bg: '#c030f0', pts: 20 },
+  { name: 'Strawberry',    emoji: '🍓', bg: '#ff2d55', pts: 15 },
+  { name: 'Dragon Fruit',  draw: 'dragon',  icon: '🌸', bg: '#ff1a8c', pts: 25 },
+  { name: 'Mango',         emoji: '🥭', bg: '#ffa200', pts: 18 },
 ];
 
 // ── Level data ────────────────────────────────────────────────────────────────
@@ -285,7 +286,7 @@ function showSelect() {
     </div>
     <div id="lvl-grid">${btns}</div>
     <div style="font-size:0.82rem;color:var(--dim)">
-      🍌 🥝 🍊 🍎 🍑 🍐 🫐 🍓 🌺 🥭
+      🍌 🥝 🍊 🍎 🍑 🍐 🟣 🍓 🌸 🥭
     </div>
   `);
 }
@@ -374,7 +375,8 @@ function refreshHUD() {
   document.getElementById('hv-cnt').textContent = fruitsEaten;
   if (fruitsEaten < FRUITS_TO_WIN) {
     const f = FRUITS[fruitQueue[fruitsEaten]];
-    document.getElementById('hud-fruit').textContent = `${f.emoji} ${f.name}`;
+    const icon = f.emoji || f.icon || '●';
+    document.getElementById('hud-fruit').textContent = `${icon} ${f.name}`;
   }
 }
 
@@ -409,17 +411,76 @@ function drawFood() {
   const f  = FRUITS[fruitQueue[fruitsEaten]];
   const px = fruitPos.x * CELL + CELL / 2;
   const py = fruitPos.y * CELL + CELL / 2;
+  const r  = CELL / 2 - 1;
 
-  // Subtle pulse glow
-  const beat  = Math.sin(Date.now() / 320) * 0.5 + 0.5;
-  ctx.shadowBlur  = 8 + beat * 8;
-  ctx.shadowColor = 'rgba(88,166,255,0.4)';
+  // Bright glow halo around every fruit so it always pops on the dark board
+  ctx.shadowBlur  = 20;
+  ctx.shadowColor = f.bg;
+  ctx.fillStyle   = f.bg + '55'; // semi-transparent backing circle
+  ctx.beginPath();
+  ctx.arc(px, py, r + 1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
 
-  ctx.font         = `${CELL - 2}px serif`;
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(f.emoji, px, py);
-  ctx.shadowBlur   = 0;
+  if (f.draw === 'passion') {
+    drawPassionFruit(px, py, r);
+  } else if (f.draw === 'dragon') {
+    drawDragonFruit(px, py, r);
+  } else {
+    ctx.font         = `${CELL - 4}px serif`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(f.emoji, px, py);
+  }
+}
+
+// Custom canvas painter: passion fruit cross-section (purple rind, golden flesh, seeds)
+function drawPassionFruit(px, py, r) {
+  // Purple rind
+  ctx.fillStyle = '#7b0fa8';
+  ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+
+  // Bright yellow-gold inner flesh
+  ctx.fillStyle = '#ffd000';
+  ctx.beginPath(); ctx.arc(px, py, r * 0.72, 0, Math.PI * 2); ctx.fill();
+
+  // Dark seeds radiating from centre
+  for (let i = 0; i < 8; i++) {
+    const a  = (i / 8) * Math.PI * 2 - Math.PI / 8;
+    const sr = r * 0.44;
+    const sx = px + Math.cos(a) * sr;
+    const sy = py + Math.sin(a) * sr;
+    ctx.fillStyle = '#3a0d00';
+    ctx.beginPath(); ctx.ellipse(sx, sy, 1.6, 2.4, a, 0, Math.PI * 2); ctx.fill();
+    // tiny highlight on seed
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath(); ctx.arc(sx - 0.6, sy - 0.6, 0.7, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// Custom canvas painter: dragon fruit cross-section (hot-pink rind, white flesh, seeds)
+function drawDragonFruit(px, py, r) {
+  // Hot-pink rind
+  ctx.fillStyle = '#ff1080';
+  ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+
+  // White inner flesh
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(px, py, r * 0.68, 0, Math.PI * 2); ctx.fill();
+
+  // Tiny black seeds scattered randomly but deterministically
+  const seeds = [
+    [0.10, 0.35], [0.70, 0.52], [1.40, 0.28], [2.00, 0.56],
+    [2.65, 0.22], [3.30, 0.48], [3.95, 0.50], [4.60, 0.30],
+    [5.20, 0.42], [5.80, 0.50], [0.40, 0.18], [1.10, 0.60],
+  ];
+  const ri = r * 0.64;
+  seeds.forEach(([a, d]) => {
+    const sx = px + Math.cos(a) * ri * d;
+    const sy = py + Math.sin(a) * ri * d;
+    ctx.fillStyle = '#111';
+    ctx.beginPath(); ctx.ellipse(sx, sy, 1.4, 0.9, a, 0, Math.PI * 2); ctx.fill();
+  });
 }
 
 function drawSnake() {
