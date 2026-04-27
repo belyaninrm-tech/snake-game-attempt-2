@@ -174,7 +174,9 @@
   &nbsp;·&nbsp;
   <span id="hud-fruit">🍎 Apple</span>
   &nbsp;·&nbsp;
-  <b id="hv-cnt">0</b>/10 🍽
+  <b id="hv-cnt">0</b>/20 🍽
+  &nbsp;·&nbsp;
+  ⏱ <b id="hv-timer">0s</b>
 </div>
 
 <div id="wrap">
@@ -191,7 +193,7 @@
 // ── Config ────────────────────────────────────────────────────────────────────
 const CELL = 24, COLS = 25, ROWS = 25;
 const W = COLS * CELL, H = ROWS * CELL;
-const FRUITS_TO_WIN = 10;
+const FRUITS_TO_WIN = 20;
 const BASE_MS = 200; // tick interval at level 1 (ms)
 
 const canvas  = document.getElementById('canvas');
@@ -231,7 +233,8 @@ const LVL_INFO = [
   { icon: '⚡', label: 'Max Speed' }, // 10
 ];
 
-function tickMs(lv) { return Math.round(BASE_MS * Math.pow(0.85, lv - 1)); }
+// Base speed boosted 20% globally, then an additional 15% faster per level
+function tickMs(lv) { return Math.round(BASE_MS * 0.80 * Math.pow(0.85, lv - 1)); }
 
 // ── Jokes (one per level completion, cycling) ─────────────────────────────────
 const JOKES = [
@@ -257,6 +260,7 @@ let score  = 0;
 let snake, dir, nextDir;
 let fruitQueue, fruitPos, fruitsEaten;
 let popups, tickTimer;
+let startTime = null, elapsedSecs = 0;
 
 // ── Overlay helpers ───────────────────────────────────────────────────────────
 function setOv(html) { overlay.innerHTML = html; overlay.classList.remove('hidden'); }
@@ -282,7 +286,7 @@ function showSelect() {
     <div class="ov-icon">🐍</div>
     <div class="ov-title" style="color:var(--accent)">SNAKE</div>
     <div class="ov-sub">
-      Eat all 10 fruits to complete a level.<br>Choose your difficulty:
+      Eat all 20 fruits to complete a level.<br>Choose your difficulty:
     </div>
     <div id="lvl-grid">${btns}</div>
     <div style="font-size:0.82rem;color:var(--dim)">
@@ -295,9 +299,13 @@ function showSelect() {
 function play(lv) { level = lv; score = 0; beginLevel(); }
 
 function beginLevel() {
-  fruitQueue  = shuffle(FRUITS.map((_, i) => i));
+  // Two independent shuffles of all 10 fruits = 20 total
+  fruitQueue  = [...shuffle(FRUITS.map((_, i) => i)),
+                 ...shuffle(FRUITS.map((_, i) => i))];
   fruitsEaten = 0;
   popups      = [];
+  startTime   = Date.now();
+  elapsedSecs = 0;
 
   const cx = (COLS / 2) | 0, cy = (ROWS / 2) | 0;
   snake   = [{x: cx, y: cy}, {x: cx - 1, y: cy}, {x: cx - 2, y: cy}];
@@ -343,6 +351,7 @@ function tick() {
     popups.push({x: hx * CELL + CELL / 2, y: hy * CELL, txt: `+${f.pts}`, t: 36});
 
     if (fruitsEaten >= FRUITS_TO_WIN) {
+      elapsedSecs = Math.round((Date.now() - startTime) / 1000);
       stop();
       screen = 'win';
       draw();
@@ -358,6 +367,7 @@ function tick() {
 }
 
 function die() {
+  elapsedSecs = Math.round((Date.now() - startTime) / 1000);
   stop();
   screen = 'lost';
   draw();
@@ -367,6 +377,11 @@ function die() {
 
 function go()   { tickTimer = setTimeout(tick, tickMs(level)); }
 function stop() { clearTimeout(tickTimer); tickTimer = null; }
+
+function fmtTime(s) {
+  if (s < 60) return `${s} second${s !== 1 ? 's' : ''}`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
 
 // ── HUD ───────────────────────────────────────────────────────────────────────
 function refreshHUD() {
@@ -393,6 +408,11 @@ function draw() {
   drawSnake();
   drawBar();
   drawPops();
+  // Refresh live timer in HUD each frame
+  if (startTime && screen === 'playing') {
+    const s = Math.floor((Date.now() - startTime) / 1000);
+    document.getElementById('hv-timer').textContent = s + 's';
+  }
 }
 
 function drawGrid() {
@@ -548,9 +568,11 @@ function showLost() {
     </div>
     <div class="ov-title" style="color:var(--red)">YOU LOST!</div>
     <div class="ov-sub">
-      You ate <b style="color:var(--text)">${fruitsEaten} / 10</b> fruits on
+      You ate <b style="color:var(--text)">${fruitsEaten} / 20</b> fruits on
       <b style="color:var(--text)">Level ${level}</b>.<br>
-      Score: <b style="color:var(--text)">${score}</b>
+      Score: <b style="color:var(--text)">${score}</b><br>
+      It took you <b style="color:var(--text)">${fmtTime(elapsedSecs)}</b> to lose.
+      Best of luck next time!
     </div>
     <div class="btn-row">
       <button class="btn btn-g" onclick="G.replay()">↺ Replay Level ${level}</button>
@@ -568,7 +590,10 @@ function showLevelWin() {
   setOv(`
     <div class="ov-icon">🎉🐍🎉</div>
     <div class="ov-title" style="color:var(--green)">Level ${level} Complete!</div>
-    <div class="ov-sub">Score: <b style="color:var(--text)">${score}</b></div>
+    <div class="ov-sub">
+      Score: <b style="color:var(--text)">${score}</b><br>
+      It took you <b style="color:var(--text)">${fmtTime(elapsedSecs)}</b>
+    </div>
     <div class="ov-joke">${nextJoke()}</div>
     <button class="btn btn-g" onclick="G.next()">➡ Level ${level + 1}</button>
     <button class="btn btn-b" onclick="G.sel()" style="font-size:0.82rem">⬅ Level Select</button>
@@ -587,7 +612,8 @@ function showGameComplete() {
     </div>
     <div class="ov-sub">
       All 10 levels conquered! 🏆<br>
-      Final Score: <b style="color:var(--text)">${score}</b>
+      Final Score: <b style="color:var(--text)">${score}</b><br>
+      It took you <b style="color:var(--text)">${fmtTime(elapsedSecs)}</b>
     </div>
     <div class="ov-joke">${nextJoke()}</div>
     <button class="btn btn-g" onclick="G.sel()">🔄 Play Again</button>
