@@ -29,12 +29,12 @@
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      gap: 10px;
+      gap: 6px;
       user-select: none;
     }
 
     #title {
-      font-size: 1.6rem;
+      font-size: 1.35rem;
       letter-spacing: 4px;
       color: var(--accent);
       font-weight: bold;
@@ -211,7 +211,7 @@
 'use strict';
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const CELL = 24, COLS = 25, ROWS = 25;
+const CELL = 20, COLS = 25, ROWS = 25;
 const W = COLS * CELL, H = ROWS * CELL;
 const FRUITS_TO_WIN = 20;
 const BASE_MS = 200;         // tick interval at level 1 (ms)
@@ -361,11 +361,26 @@ function showReadySequence() {
 
 function countDown(n) {
   if (n === 0) {
-    // 🐍tart!
+    // S-shaped snake + "tart!" → reads as "Start!"
     setOv(`
       <div class="count-start">
-        <span style="font-size:5.5rem;line-height:1">🐍</span>
-        <span style="font-size:4.2rem;font-weight:900;color:var(--green);
+        <svg viewBox="-8 -6 90 100" width="56" height="63" overflow="visible"
+             style="display:inline-block;vertical-align:middle;margin-right:2px">
+          <!-- S-curve body -->
+          <path d="M58,14 C72,14 72,40 38,43 C4,46 4,70 20,78"
+                stroke="#3fb950" stroke-width="13" fill="none"
+                stroke-linecap="round"/>
+          <!-- Head -->
+          <circle cx="58" cy="14" r="9" fill="#3fb950"/>
+          <!-- Eye -->
+          <circle cx="64" cy="9"  r="3"   fill="white"/>
+          <circle cx="65" cy="9.5" r="1.4" fill="#111"/>
+          <!-- Forked tongue -->
+          <path d="M58,22 L55,29 M58,22 L61,29"
+                stroke="#f85149" stroke-width="1.8"
+                stroke-linecap="round" fill="none"/>
+        </svg>
+        <span style="font-size:4rem;font-weight:900;color:var(--green);
                      letter-spacing:-1px;line-height:1">tart!</span>
       </div>
     `);
