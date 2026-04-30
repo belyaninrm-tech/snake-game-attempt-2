@@ -161,6 +161,26 @@
       80%{transform:translateX(4px)}
     }
     .shake { animation: shake .45s ease; }
+
+    /* ── Countdown pop animation ───────────── */
+    @keyframes countPop {
+      0%   { transform: scale(0.2); opacity: 0; }
+      65%  { transform: scale(1.3); }
+      100% { transform: scale(1);   opacity: 1; }
+    }
+    .count-num {
+      font-size: 9rem;
+      font-weight: 900;
+      color: var(--accent);
+      line-height: 1;
+      animation: countPop 0.4s cubic-bezier(.34,1.56,.64,1) both;
+    }
+    .count-start {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: countPop 0.4s cubic-bezier(.34,1.56,.64,1) both;
+    }
   </style>
 </head>
 <body>
@@ -176,7 +196,7 @@
   &nbsp;·&nbsp;
   <b id="hv-cnt">0</b>/20 🍽
   &nbsp;·&nbsp;
-  ⏱ <b id="hv-timer">0s</b>
+  ⏱ <b id="hv-timer">2:00</b>
 </div>
 
 <div id="wrap">
@@ -194,7 +214,8 @@
 const CELL = 24, COLS = 25, ROWS = 25;
 const W = COLS * CELL, H = ROWS * CELL;
 const FRUITS_TO_WIN = 20;
-const BASE_MS = 200; // tick interval at level 1 (ms)
+const BASE_MS = 200;         // tick interval at level 1 (ms)
+const TIME_LIMIT_SECS = 120; // 2-minute time limit per level
 
 const canvas  = document.getElementById('canvas');
 const ctx     = canvas.getContext('2d');
@@ -261,6 +282,7 @@ let snake, dir, nextDir;
 let fruitQueue, fruitPos, fruitsEaten;
 let popups, tickTimer;
 let startTime = null, elapsedSecs = 0;
+let timedOut = false, pauseStart = null;
 
 // ── Overlay helpers ───────────────────────────────────────────────────────────
 function setOv(html) { overlay.innerHTML = html; overlay.classList.remove('hidden'); }
@@ -304,7 +326,8 @@ function beginLevel() {
                  ...shuffle(FRUITS.map((_, i) => i))];
   fruitsEaten = 0;
   popups      = [];
-  startTime   = Date.now();
+  timedOut    = false;
+  startTime   = null;
   elapsedSecs = 0;
 
   const cx = (COLS / 2) | 0, cy = (ROWS / 2) | 0;
@@ -315,6 +338,49 @@ function beginLevel() {
   placeFood();
   refreshHUD();
   hudEl.style.visibility = 'visible';
+  showReadySequence();
+}
+
+// ── READY → COUNTDOWN → 🐍TART! ──────────────────────────────────────────────
+function showReadySequence() {
+  screen = 'countdown';
+  draw(); // show board behind overlay so player gets a peek
+  setOv(`
+    <div class="ov-icon">🐍</div>
+    <div class="ov-title" style="color:var(--accent)">Are you ready?</div>
+    <div class="ov-sub" style="font-size:1.05rem;line-height:2">
+      You have <b style="color:var(--yellow)">2 minutes</b>
+      to eat <b style="color:var(--green)">20 fruits!</b>
+    </div>
+    <div class="ov-sub">
+      Level ${level} &nbsp;·&nbsp; ${LVL_INFO[level - 1].icon} ${LVL_INFO[level - 1].label}
+    </div>
+  `);
+  setTimeout(() => countDown(3), 3000);
+}
+
+function countDown(n) {
+  if (n === 0) {
+    // 🐍tart!
+    setOv(`
+      <div class="count-start">
+        <span style="font-size:5.5rem;line-height:1">🐍</span>
+        <span style="font-size:4.2rem;font-weight:900;color:var(--green);
+                     letter-spacing:-1px;line-height:1">tart!</span>
+      </div>
+    `);
+    setTimeout(launchGame, 1500);
+    return;
+  }
+  setOv(`<div class="count-num">${n}</div>`);
+  setTimeout(() => countDown(n - 1), 1000);
+}
+
+function launchGame() {
+  const timerEl = document.getElementById('hv-timer');
+  timerEl.textContent = '2:00';
+  timerEl.style.color = '';
+  startTime = Date.now();
   hideOv();
   screen = 'playing';
   go();
@@ -330,6 +396,11 @@ function placeFood() {
 // ── GAME TICK ─────────────────────────────────────────────────────────────────
 function tick() {
   if (screen !== 'playing') return;
+
+  // 2-minute time limit
+  if (startTime && (Date.now() - startTime) / 1000 >= TIME_LIMIT_SECS) {
+    die(true); return;
+  }
 
   dir = nextDir;
   const hx = ((snake[0].x + dir.x) + COLS) % COLS;
@@ -366,8 +437,9 @@ function tick() {
   go();
 }
 
-function die() {
-  elapsedSecs = Math.round((Date.now() - startTime) / 1000);
+function die(timeout = false) {
+  timedOut    = timeout;
+  elapsedSecs = startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
   stop();
   screen = 'lost';
   draw();
@@ -408,10 +480,12 @@ function draw() {
   drawSnake();
   drawBar();
   drawPops();
-  // Refresh live timer in HUD each frame
+  // Countdown timer in HUD
   if (startTime && screen === 'playing') {
-    const s = Math.floor((Date.now() - startTime) / 1000);
-    document.getElementById('hv-timer').textContent = s + 's';
+    const rem = Math.max(0, TIME_LIMIT_SECS - Math.floor((Date.now() - startTime) / 1000));
+    const timerEl = document.getElementById('hv-timer');
+    timerEl.textContent = `${Math.floor(rem / 60)}:${String(rem % 60).padStart(2, '0')}`;
+    timerEl.style.color = rem <= 10 ? 'var(--red)' : '';
   }
 }
 
@@ -566,13 +640,15 @@ function showLost() {
     <div class="ov-icon" style="font-size:3.5rem">
       😢<br>🐍💧
     </div>
-    <div class="ov-title" style="color:var(--red)">YOU LOST!</div>
+    <div class="ov-title" style="color:var(--red)">${timedOut ? '⏰ TIME\'S UP!' : 'YOU LOST!'}</div>
     <div class="ov-sub">
       You ate <b style="color:var(--text)">${fruitsEaten} / 20</b> fruits on
       <b style="color:var(--text)">Level ${level}</b>.<br>
       Score: <b style="color:var(--text)">${score}</b><br>
-      It took you <b style="color:var(--text)">${fmtTime(elapsedSecs)}</b> to lose.
-      Best of luck next time!
+      ${timedOut
+        ? `You ran out of your 2 minutes after eating <b style="color:var(--text)">${fruitsEaten}</b> fruits.<br>Best of luck next time!`
+        : `It took you <b style="color:var(--text)">${fmtTime(elapsedSecs)}</b> to lose. Best of luck next time!`
+      }
     </div>
     <div class="btn-row">
       <button class="btn btn-g" onclick="G.replay()">↺ Replay Level ${level}</button>
@@ -625,10 +701,15 @@ function pause() {
   if (screen !== 'playing') return;
   screen = 'paused';
   stop();
+  pauseStart = Date.now();
+  const rem = Math.max(0, TIME_LIMIT_SECS - Math.floor((Date.now() - startTime) / 1000));
   setOv(`
     <div class="ov-icon">⏸️</div>
     <div class="ov-title" style="color:var(--accent)">Paused</div>
-    <div class="ov-sub">Level ${level} · Score ${score}</div>
+    <div class="ov-sub">
+      Level ${level} &nbsp;·&nbsp; Score ${score}<br>
+      Time remaining: <b style="color:var(--text)">${Math.floor(rem/60)}:${String(rem%60).padStart(2,'0')}</b>
+    </div>
     <button class="btn btn-g" onclick="G.resume()">▶ Resume</button>
     <button class="btn btn-b" onclick="G.sel()">⬅ Level Select</button>
   `);
@@ -636,6 +717,8 @@ function pause() {
 
 function resume() {
   if (screen !== 'paused') return;
+  // Shift startTime forward by the pause duration so the countdown stays accurate
+  if (pauseStart) { startTime += Date.now() - pauseStart; pauseStart = null; }
   hideOv();
   screen = 'playing';
   go();
