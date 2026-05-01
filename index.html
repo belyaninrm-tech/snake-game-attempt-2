@@ -78,9 +78,9 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 14px;
-      padding: 24px 20px;
-      overflow-y: auto;
+      gap: 9px;
+      padding: 14px 18px;
+      overflow-y: hidden;
     }
     #overlay.hidden { display: none; }
 
@@ -127,27 +127,27 @@
     #lvl-grid {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 8px;
-      max-width: 400px;
+      gap: 6px;
+      max-width: 380px;
       width: 100%;
     }
     .lbtn {
       background: var(--surf);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 10px 6px 8px;
+      padding: 7px 4px 5px;
       cursor: pointer;
       transition: border-color .15s, background .15s;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 3px;
+      gap: 2px;
       color: var(--text);
     }
     .lbtn:hover { border-color: var(--accent); background: #1c2128; }
-    .lbtn .ln { font-size: 1.35rem; font-weight: bold; color: var(--accent); }
-    .lbtn .li { font-size: 1rem; }
-    .lbtn .ll { font-size: 0.62rem; color: var(--muted); text-align: center; }
+    .lbtn .ln { font-size: 1.15rem; font-weight: bold; color: var(--accent); }
+    .lbtn .li { font-size: 0.85rem; }
+    .lbtn .ll { font-size: 0.55rem; color: var(--muted); text-align: center; }
 
     /* ── Controls hint ─────────────────────── */
     #ctrl { color: var(--dim); font-size: 0.78rem; }
@@ -293,6 +293,7 @@ function hideOv()    { overlay.classList.add('hidden'); }
 function showSelect() {
   screen = 'select';
   stop();
+  overlay.style.overflowY = 'hidden';
   hudEl.style.visibility = 'hidden';
   bgDraw();
 
@@ -306,24 +307,54 @@ function showSelect() {
   }).join('');
 
   setOv(`
-    <div class="ov-icon">🐍</div>
-    <div class="ov-title" style="color:var(--accent)">SNAKE</div>
-    <div class="ov-sub">
-      Eat all 20 fruits to complete a level.<br>Choose your difficulty:
+    <svg viewBox="0 0 100 108" width="92" height="100" style="display:block;overflow:visible">
+      <!-- Shadow depth -->
+      <path d="M76,16 C100,16 100,50 56,55 C12,60 10,92 34,103"
+            stroke="#091f09" stroke-width="28" fill="none" stroke-linecap="round"/>
+      <!-- Main body -->
+      <path d="M76,16 C100,16 100,50 56,55 C12,60 10,92 34,103"
+            stroke="#1e6e1e" stroke-width="22" fill="none" stroke-linecap="round"/>
+      <!-- Belly/highlight stripe -->
+      <path d="M76,16 C100,16 100,50 56,55 C12,60 10,92 34,103"
+            stroke="#4aaa4a" stroke-width="8" fill="none" stroke-linecap="round" stroke-opacity="0.45"/>
+      <!-- Wide viper jaw -->
+      <path d="M62,24 L91,24 L91,11 L76,2 L62,11 Z" fill="#1a6a1a"/>
+      <!-- Head dome -->
+      <path d="M63,11 Q76,3 89,11 Q89,23 76,25 Q63,23 63,11 Z" fill="#2b8b2b"/>
+      <!-- Head sheen -->
+      <path d="M67,8 Q76,4 85,8" stroke="#5acc5a" stroke-width="2.5" fill="none"
+            stroke-linecap="round" opacity="0.55"/>
+      <!-- Evil eye: glowing amber, vertical slit pupil -->
+      <circle cx="85" cy="11" r="5.5" fill="#f0c000"/>
+      <circle cx="85" cy="11" r="5.5" fill="#ff6600" opacity="0.28"/>
+      <ellipse cx="85" cy="11" rx="1.8" ry="4.8" fill="#080808"/>
+      <circle cx="86.5" cy="8.5" r="1.4" fill="white" opacity="0.85"/>
+      <!-- Fangs -->
+      <path d="M70,24 L67,37" stroke="#e8e8e8" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M77,25 L74,38" stroke="#e8e8e8" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M67,37 L65.5,40" stroke="#e8e8e8" stroke-width="2" stroke-linecap="round"/>
+      <path d="M74,38 L72.5,41" stroke="#e8e8e8" stroke-width="2" stroke-linecap="round"/>
+      <!-- Forked tongue -->
+      <path d="M72,25 L66,43 M72,25 L77,43"
+            stroke="#f85149" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+    <div class="ov-sub" style="font-size:0.88rem">
+      Eat all 20 fruits to complete a level. Choose difficulty:
     </div>
     <div id="lvl-grid">${btns}</div>
-    <div style="font-size:0.82rem;color:var(--dim)">
+    <div style="font-size:0.78rem;color:var(--dim)">
       🍌 🥝 🍊 🍎 🍑 🍐 🍒 🍓 🌸 🥭
     </div>
-    <button class="btn btn-b" onclick="G.rules()" style="font-size:0.82rem">📋 Read the rules</button>
+    <button class="btn btn-b" onclick="G.rules()" style="font-size:0.8rem">📋 Read the rules</button>
   `);
 }
 
 // ── RULES OVERLAY ─────────────────────────────────────────────────────────────
 function showRules() {
+  overlay.style.overflowY = 'auto';
   setOv(`
-    <div class="ov-title" style="color:var(--accent)">📋 Rules</div>
-    <div class="ov-sub" style="text-align:left;max-width:390px;line-height:1.9">
+    <div class="ov-title" style="color:var(--accent);font-size:1.4rem">📋 Rules</div>
+    <div class="ov-sub" style="text-align:left;max-width:390px;line-height:1.85">
       🎯 <b>Goal:</b> Eat all 20 fruits to complete the level.<br>
       ⏱️ <b>Time Limit:</b> 2 minutes per level — don't dawdle!<br>
       🐍 <b>Controls:</b> Arrow keys or WASD. The snake wraps around open edges.<br>
