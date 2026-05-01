@@ -29,12 +29,12 @@
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      gap: 10px;
+      gap: 6px;
       user-select: none;
     }
 
     #title {
-      font-size: 1.6rem;
+      font-size: 1.35rem;
       letter-spacing: 4px;
       color: var(--accent);
       font-weight: bold;
@@ -211,7 +211,7 @@
 'use strict';
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const CELL = 24, COLS = 25, ROWS = 25;
+const CELL = 20, COLS = 25, ROWS = 25;
 const W = COLS * CELL, H = ROWS * CELL;
 const FRUITS_TO_WIN = 20;
 const BASE_MS = 200;         // tick interval at level 1 (ms)
@@ -283,6 +283,7 @@ let fruitQueue, fruitPos, fruitsEaten;
 let popups, tickTimer;
 let startTime = null, elapsedSecs = 0;
 let timedOut = false, pauseStart = null;
+let fireCells = new Set();
 
 // ── Overlay helpers ───────────────────────────────────────────────────────────
 function setOv(html) { overlay.innerHTML = html; overlay.classList.remove('hidden'); }
@@ -314,6 +315,25 @@ function showSelect() {
     <div style="font-size:0.82rem;color:var(--dim)">
       🍌 🥝 🍊 🍎 🍑 🍐 🍒 🍓 🌸 🥭
     </div>
+    <button class="btn btn-b" onclick="G.rules()" style="font-size:0.82rem">📋 Read the rules</button>
+  `);
+}
+
+// ── RULES OVERLAY ─────────────────────────────────────────────────────────────
+function showRules() {
+  setOv(`
+    <div class="ov-title" style="color:var(--accent)">📋 Rules</div>
+    <div class="ov-sub" style="text-align:left;max-width:390px;line-height:1.9">
+      🎯 <b>Goal:</b> Eat all 20 fruits to complete the level.<br>
+      ⏱️ <b>Time Limit:</b> 2 minutes per level — don't dawdle!<br>
+      🐍 <b>Controls:</b> Arrow keys or WASD. The snake wraps around open edges.<br>
+      💀 <b>Self-collision:</b> Running into your own body ends the level.<br>
+      🔥 <b>Fire Hazard:</b> Border cells can be ablaze. Entering a 🔥 cell is instant death! Level 1 has 2% of the border on fire; each higher level adds 2% more (Level 10: 20% on fire).<br>
+      🍎 <b>Fruits:</b> 10 unique fruits appear twice each (20 total). Rarer fruits score more points.<br>
+      ⚡ <b>Speed:</b> Higher difficulty levels move faster.<br>
+      ⏸️ <b>Pause:</b> Press P or Escape to pause / resume.
+    </div>
+    <button class="btn btn-b" onclick="G.sel()">← Back</button>
   `);
 }
 
@@ -329,6 +349,7 @@ function beginLevel() {
   timedOut    = false;
   startTime   = null;
   elapsedSecs = 0;
+  buildFireCells(level);
 
   const cx = (COLS / 2) | 0, cy = (ROWS / 2) | 0;
   snake   = [{x: cx, y: cy}, {x: cx - 1, y: cy}, {x: cx - 2, y: cy}];
@@ -361,11 +382,26 @@ function showReadySequence() {
 
 function countDown(n) {
   if (n === 0) {
-    // 🐍tart!
+    // S-shaped snake + "tart!" → reads as "Start!"
     setOv(`
       <div class="count-start">
-        <span style="font-size:5.5rem;line-height:1">🐍</span>
-        <span style="font-size:4.2rem;font-weight:900;color:var(--green);
+        <svg viewBox="-8 -6 90 100" width="56" height="63" overflow="visible"
+             style="display:inline-block;vertical-align:middle;margin-right:2px">
+          <!-- S-curve body -->
+          <path d="M58,14 C72,14 72,40 38,43 C4,46 4,70 20,78"
+                stroke="#3fb950" stroke-width="13" fill="none"
+                stroke-linecap="round"/>
+          <!-- Head -->
+          <circle cx="58" cy="14" r="9" fill="#3fb950"/>
+          <!-- Eye -->
+          <circle cx="64" cy="9"  r="3"   fill="white"/>
+          <circle cx="65" cy="9.5" r="1.4" fill="#111"/>
+          <!-- Forked tongue -->
+          <path d="M58,22 L55,29 M58,22 L61,29"
+                stroke="#f85149" stroke-width="1.8"
+                stroke-linecap="round" fill="none"/>
+        </svg>
+        <span style="font-size:4rem;font-weight:900;color:var(--green);
                      letter-spacing:-1px;line-height:1">tart!</span>
       </div>
     `);
@@ -386,10 +422,18 @@ function launchGame() {
   go();
 }
 
+function buildFireCells(lv) {
+  const border = [];
+  for (let x = 0; x < COLS; x++) { border.push(`${x},0`); border.push(`${x},${ROWS - 1}`); }
+  for (let y = 1; y < ROWS - 1; y++) { border.push(`0,${y}`); border.push(`${COLS - 1},${y}`); }
+  const count = Math.round(0.02 * lv * border.length);
+  fireCells = new Set(shuffle([...border]).slice(0, count));
+}
+
 function placeFood() {
   const used = new Set(snake.map(s => `${s.x},${s.y}`));
   let x, y;
-  do { x = rnd(COLS); y = rnd(ROWS); } while (used.has(`${x},${y}`));
+  do { x = rnd(COLS); y = rnd(ROWS); } while (used.has(`${x},${y}`) || fireCells.has(`${x},${y}`));
   fruitPos = {x, y};
 }
 
@@ -410,6 +454,9 @@ function tick() {
   for (let i = 0; i < snake.length - 1; i++) {
     if (snake[i].x === hx && snake[i].y === hy) { die(); return; }
   }
+
+  // Fire cell collision
+  if (fireCells.has(`${hx},${hy}`)) { die(); return; }
 
   const ate = fruitPos.x === hx && fruitPos.y === hy;
   snake.unshift({x: hx, y: hy});
@@ -476,6 +523,7 @@ function bgDraw() {
 
 function draw() {
   bgDraw();
+  drawFire();
   drawFood();
   drawSnake();
   drawBar();
@@ -498,6 +546,21 @@ function drawGrid() {
   for (let r = 0; r <= ROWS; r++) {
     ctx.beginPath(); ctx.moveTo(0, r * CELL); ctx.lineTo(W, r * CELL); ctx.stroke();
   }
+}
+
+function drawFire() {
+  if (!fireCells || fireCells.size === 0) return;
+  ctx.font         = `${CELL - 4}px serif`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  fireCells.forEach(key => {
+    const [gx, gy] = key.split(',').map(Number);
+    const px = gx * CELL + CELL / 2;
+    const py = gy * CELL + CELL / 2;
+    ctx.fillStyle = 'rgba(255, 90, 0, 0.28)';
+    ctx.fillRect(gx * CELL, gy * CELL, CELL, CELL);
+    ctx.fillText('🔥', px, py);
+  });
 }
 
 function drawFood() {
@@ -728,6 +791,7 @@ function resume() {
 window.G = {
   play:   lv => play(lv),
   sel:    ()  => showSelect(),
+  rules:  ()  => showRules(),
   replay: ()  => { score = 0; beginLevel(); },
   easier: ()  => { level = Math.max(1, level - 1); score = 0; beginLevel(); },
   next:   ()  => { level++; beginLevel(); },
